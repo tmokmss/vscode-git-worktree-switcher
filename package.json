@@ -1,0 +1,84 @@
+{
+  "name": "vscode-worktrees",
+  "displayName": "Worktrees",
+  "description": "Manage multiple git worktrees in a single VS Code window. Designed for use with Claude Code.",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.118.0"
+  },
+  "categories": [
+    "Other",
+    "SCM Providers"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "vscode-worktrees.addWorktree",
+        "title": "Worktrees: Add Worktree to Workspace"
+      },
+      {
+        "command": "vscode-worktrees.focusWorktree",
+        "title": "Worktrees: Focus Worktree"
+      },
+      {
+        "command": "vscode-worktrees.unfocusWorktree",
+        "title": "Worktrees: Clear Worktree Focus"
+      },
+      {
+        "command": "vscode-worktrees.removeWorktreeFolder",
+        "title": "Worktrees: Remove Worktree from Workspace"
+      },
+      {
+        "command": "vscode-worktrees.refreshWorktrees",
+        "title": "Worktrees: Refresh / Auto-Add All Worktrees"
+      },
+      {
+        "command": "vscode-worktrees.showLogs",
+        "title": "Worktrees: Show Logs"
+      }
+    ],
+    "configuration": {
+      "title": "Worktrees",
+      "properties": {
+        "vscode-worktrees.autoAddOnStartup": {
+          "type": "boolean",
+          "default": false,
+          "description": "On startup, automatically add all sibling worktrees of the current workspace folder."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "pretest:integration": "npm run compile-tests && npm run compile && npm run lint",
+    "test:integration": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.118.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.27.3",
+    "eslint": "^9.39.3",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1",
+    "vitest": "^4.1.5"
+  }
+}

@@ -1,0 +1,342 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import * as vscode from "vscode";
+import { getGitCommonDir, listWorktrees, type Worktree } from "./git";
+import { focusOn } from "./focus";
+import {
+    buildMultiRepoShowAllEntries,
+    repoDisplayName,
+    shouldDescendInto,
+    worktreeLabel,
+    type ExistingFolder,
+    type RepoSnapshot,
+    type RootEntry,
+} from "./worktrees";
+
+const REPO_DISCOVERY_MAX_DEPTH = 2;
+const CACHE_TTL_MS = 60_000;
+
+let repoCache: { repos: RepoSnapshot[]; timestamp: number } | null = null;
+
+let outputChannel: vscode.OutputChannel | null = null;
+function log(msg: string): void {
+    if (!outputChannel) {
+        outputChannel = vscode.window.createOutputChannel("Worktrees");
+    }
+    const ts = new Date().toISOString().slice(11, 23);
+    outputChannel.appendLine(`[${ts}] ${msg}`);
+}
+
+export function activate(context: vscode.ExtensionContext) {
+    context.subscriptions.push(
+        vscode.commands.registerCommand("vscode-worktrees.addWorktree", () => addWorktreeCommand()),
+        vscode.commands.registerCommand("vscode-worktrees.focusWorktree", () => focusWorktreeCommand()),
+        vscode.commands.registerCommand("vscode-worktrees.unfocusWorktree", () => unfocusWorktreeCommand()),
+        vscode.commands.registerCommand("vscode-worktrees.removeWorktreeFolder", () => removeWorktreeFolderCommand()),
+        vscode.commands.registerCommand("vscode-worktrees.refreshWorktrees", () => refreshCommand()),
+        vscode.commands.registerCommand("vscode-worktrees.showLogs", () => {
+            if (!outputChannel) {outputChannel = vscode.window.createOutputChannel("Worktrees");}
+            outputChannel.show();
+        }),
+        vscode.workspace.onDidChangeWorkspaceFolders(() => {
+            log(`Workspace folders changed → invalidating cache`);
+            repoCache = null;
+        })
+    );
+
+    setTimeout(() => {
+        void getRepos().catch((e) => log(`Pre-warm failed: ${e instanceof Error ? e.message : String(e)}`));
+    }, 100);
+
+    if (vscode.workspace.getConfiguration().get<boolean>("vscode-worktrees.autoAddOnStartup", false)) {
+        void unfocusWorktreeCommand(true);
+    }
+}
+
+export function deactivate() {}
+
+async function pickAnchorFolder(): Promise<vscode.WorkspaceFolder | undefined> {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    if (folders.length === 0) {
+        vscode.window.showErrorMessage("Open a folder first.");
+        return undefined;
+    }
+    if (folders.length === 1) {return folders[0];}
+    return vscode.window.showWorkspaceFolderPick({
+        placeHolder: "Select a folder whose repository to query for worktrees",
+    });
+}
+
+async function getCommonDirSafe(cwd: string): Promise<string | null> {
+    try {
+        return await getGitCommonDir(cwd);
+    } catch {
+        return null;
+    }
+}
+
+async function getExistingFolders(): Promise<ExistingFolder[]> {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const out: ExistingFolder[] = [];
+    for (const f of folders) {
+        const commonDir = await getCommonDirSafe(f.uri.fsPath);
+        out.push({ path: f.uri.fsPath, name: f.name, commonDir });
+    }
+    return out;
+}
+
+async function getRepoSnapshot(cwd: string): Promise<RepoSnapshot | undefined> {
+    try {
+        const [commonDir, worktrees] = await Promise.all([
+            getGitCommonDir(cwd),
+            listWorktrees(cwd),
+        ]);
+        return { commonDir, name: repoDisplayName(commonDir, worktrees), worktrees };
+    } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        log(`getRepoSnapshot failed at ${cwd}: ${msg}`);
+        return undefined;
+    }
+}
+
+async function isGitWorkingDir(p: string): Promise<boolean> {
+    try {
+        await fs.stat(path.join(p, ".git"));
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function findNestedRepos(start: string, maxDepth: number): Promise<string[]> {
+    const found: string[] = [];
+
+    const walk = async (dir: string, depth: number): Promise<void> => {
+        if (depth > 0 && (await isGitWorkingDir(dir))) {
+            found.push(dir);
+            return;
+        }
+        if (depth >= maxDepth) {return;}
+
+        let entries: import("node:fs").Dirent[];
+        try {
+            entries = await fs.readdir(dir, { withFileTypes: true });
+        } catch (e: unknown) {
+            log(`readdir failed: ${dir} (${e instanceof Error ? e.message : String(e)})`);
+            return;
+        }
+
+        const subdirs = entries
+            .filter((e) => e.isDirectory() && shouldDescendInto(e.name))
+            .map((e) => path.join(dir, e.name));
+
+        await Promise.all(subdirs.map((sub) => walk(sub, depth + 1)));
+    };
+
+    await walk(start, 0);
+    return found;
+}
+
+async function getRepos(forceRefresh = false): Promise<RepoSnapshot[]> {
+    if (!forceRefresh && repoCache && Date.now() - repoCache.timestamp < CACHE_TTL_MS) {
+        log(`Cache hit (age=${Date.now() - repoCache.timestamp}ms, repos=${repoCache.repos.length})`);
+        return repoCache.repos;
+    }
+    log(`Cache miss, running discovery`);
+    const repos = await discoverReposFromWorkspace();
+    repoCache = { repos, timestamp: Date.now() };
+    return repos;
+}
+
+async function refreshCommand(): Promise<void> {
+    repoCache = null;
+    const t0 = Date.now();
+    const repos = await getRepos(true);
+    const total = repos.reduce((sum, r) => sum + r.worktrees.filter((w) => !w.bare).length, 0);
+    vscode.window.showInformationMessage(
+        `Refreshed: ${repos.length} repo(s), ${total} worktree(s) in ${Date.now() - t0}ms`
+    );
+}
+
+async function discoverReposFromWorkspace(): Promise<RepoSnapshot[]> {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const t0 = Date.now();
+    log(`Discovery: scanning ${folders.length} workspace folder(s) (maxDepth=${REPO_DISCOVERY_MAX_DEPTH})`);
+
+    const perFolder = await Promise.all(
+        folders.map(async (f) => {
+            const direct = getRepoSnapshot(f.uri.fsPath);
+            const nested = findNestedRepos(f.uri.fsPath, REPO_DISCOVERY_MAX_DEPTH);
+            const [directSnap, nestedPaths] = await Promise.all([direct, nested]);
+            const nestedSnaps = await Promise.all(nestedPaths.map((p) => getRepoSnapshot(p)));
+            return { directSnap, nestedSnaps };
+        })
+    );
+
+    const seen = new Map<string, RepoSnapshot>();
+    for (const { directSnap, nestedSnaps } of perFolder) {
+        if (directSnap && !seen.has(directSnap.commonDir)) {seen.set(directSnap.commonDir, directSnap);}
+        for (const snap of nestedSnaps) {
+            if (snap && !seen.has(snap.commonDir)) {seen.set(snap.commonDir, snap);}
+        }
+    }
+
+    log(`Discovery: total ${seen.size} unique repo(s) in ${Date.now() - t0}ms`);
+    return [...seen.values()];
+}
+
+function toFolderEntries(entries: RootEntry[]): { uri: vscode.Uri; name: string }[] {
+    return entries.map((e) => ({ uri: vscode.Uri.file(e.path), name: e.label }));
+}
+
+type WorktreePick = {
+    label: string;
+    description: string;
+    repo: RepoSnapshot;
+    worktree: Worktree;
+};
+
+function buildWorktreePickItems(repos: RepoSnapshot[]): WorktreePick[] {
+    const showRepoPrefix = repos.length > 1;
+    const items: WorktreePick[] = [];
+    for (const repo of repos) {
+        for (const w of repo.worktrees) {
+            if (w.bare) {continue;}
+            const branchLabel = worktreeLabel(w);
+            items.push({
+                label: showRepoPrefix ? `${repo.name} / ${branchLabel}` : branchLabel,
+                description: w.path,
+                repo,
+                worktree: w,
+            });
+        }
+    }
+    return items;
+}
+
+function waitForWorkspaceFoldersChange(timeoutMs = 1000): Promise<void> {
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+            disposable.dispose();
+            resolve();
+        }, timeoutMs);
+        const disposable = vscode.workspace.onDidChangeWorkspaceFolders(() => {
+            clearTimeout(timer);
+            disposable.dispose();
+            resolve();
+        });
+    });
+}
+
+async function collapseExplorer(): Promise<void> {
+    await new Promise((r) => setTimeout(r, 250));
+    try {
+        await vscode.commands.executeCommand("workbench.files.action.collapseExplorerFolders");
+    } catch (e: unknown) {
+        log(`Collapse explorer failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+}
+
+async function addWorktreeCommand(): Promise<void> {
+    const anchor = await pickAnchorFolder();
+    if (!anchor) {return;}
+
+    const snap = await getRepoSnapshot(anchor.uri.fsPath);
+    if (!snap) {return;}
+
+    const existing = new Set((vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath));
+    const candidates = snap.worktrees.filter((w) => !w.bare && !existing.has(w.path));
+    if (candidates.length === 0) {
+        vscode.window.showInformationMessage("All worktrees are already in this workspace.");
+        return;
+    }
+
+    const picked = await vscode.window.showQuickPick(
+        candidates.map((w) => ({
+            label: worktreeLabel(w),
+            description: w.path,
+            worktree: w,
+        })),
+        { placeHolder: "Select a worktree to add to this workspace", matchOnDescription: true }
+    );
+    if (!picked) {return;}
+
+    const w = picked.worktree;
+    const end = vscode.workspace.workspaceFolders?.length ?? 0;
+    vscode.workspace.updateWorkspaceFolders(end, 0, {
+        uri: vscode.Uri.file(w.path),
+        name: worktreeLabel(w),
+    });
+}
+
+async function focusWorktreeCommand(): Promise<void> {
+    const repos = await getRepos();
+    if (repos.length === 0) {
+        vscode.window.showErrorMessage("No git repositories found in this workspace.");
+        return;
+    }
+
+    const items = buildWorktreePickItems(repos);
+    if (items.length === 0) {
+        vscode.window.showErrorMessage("No worktrees found.");
+        return;
+    }
+
+    const picked = await vscode.window.showQuickPick(items, {
+        placeHolder: "Focus on a worktree (workspace will be replaced with just this folder)",
+        matchOnDescription: true,
+    });
+    if (!picked) {return;}
+
+    const showRepoPrefix = repos.length > 1;
+    const label = showRepoPrefix
+        ? `${picked.repo.name} / ${worktreeLabel(picked.worktree)}`
+        : worktreeLabel(picked.worktree);
+
+    const changeAwaiter = waitForWorkspaceFoldersChange();
+    const ok = focusOn([{ uri: vscode.Uri.file(picked.worktree.path), name: label }]);
+    if (ok) {
+        await changeAwaiter;
+        await collapseExplorer();
+        vscode.window.showInformationMessage(`Focused: ${label}`);
+    }
+}
+
+async function unfocusWorktreeCommand(silent = false): Promise<void> {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    if (folders.length === 0) {
+        if (!silent) {vscode.window.showErrorMessage("Open a folder first.");}
+        return;
+    }
+
+    const repos = await getRepos();
+    if (repos.length === 0) {
+        if (!silent) {vscode.window.showErrorMessage("No git repositories found in this workspace.");}
+        return;
+    }
+
+    const current = await getExistingFolders();
+    const entries = buildMultiRepoShowAllEntries(current, repos);
+    if (entries.length === 0) {return;}
+
+    const changeAwaiter = waitForWorkspaceFoldersChange();
+    const ok = focusOn(toFolderEntries(entries));
+    if (ok) {
+        await changeAwaiter;
+        await collapseExplorer();
+        if (!silent) {vscode.window.showInformationMessage("Showing all worktrees.");}
+    }
+}
+
+async function removeWorktreeFolderCommand(): Promise<void> {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    if (folders.length === 0) {return;}
+
+    const picked = await vscode.window.showQuickPick(
+        folders.map((f) => ({ label: f.name, description: f.uri.fsPath, folder: f })),
+        { placeHolder: "Select a worktree folder to remove from this workspace (does not delete files)", matchOnDescription: true }
+    );
+    if (!picked) {return;}
+
+    vscode.workspace.updateWorkspaceFolders(picked.folder.index, 1);
+}
