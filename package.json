@@ -1,7 +1,7 @@
 {
-  "name": "vscode-worktrees",
-  "displayName": "Worktrees",
-  "description": "Manage multiple git worktrees in a single VS Code window. Designed for use with Claude Code.",
+  "name": "vscode-git-worktree-switcher",
+  "displayName": "Git Worktree Switcher",
+  "description": "Switch between git worktrees in a single VS Code window without reloading. Designed for use with Claude Code.",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.118.0"
@@ -17,34 +17,34 @@
   "contributes": {
     "commands": [
       {
-        "command": "vscode-worktrees.addWorktree",
+        "command": "vscode-git-worktree-switcher.addWorktree",
         "title": "Worktrees: Add Worktree to Workspace"
       },
       {
-        "command": "vscode-worktrees.focusWorktree",
+        "command": "vscode-git-worktree-switcher.focusWorktree",
         "title": "Worktrees: Focus Worktree"
       },
       {
-        "command": "vscode-worktrees.unfocusWorktree",
+        "command": "vscode-git-worktree-switcher.unfocusWorktree",
         "title": "Worktrees: Clear Worktree Focus"
       },
       {
-        "command": "vscode-worktrees.removeWorktreeFolder",
+        "command": "vscode-git-worktree-switcher.removeWorktreeFolder",
         "title": "Worktrees: Remove Worktree from Workspace"
       },
       {
-        "command": "vscode-worktrees.refreshWorktrees",
+        "command": "vscode-git-worktree-switcher.refreshWorktrees",
         "title": "Worktrees: Refresh / Auto-Add All Worktrees"
       },
       {
-        "command": "vscode-worktrees.showLogs",
+        "command": "vscode-git-worktree-switcher.showLogs",
         "title": "Worktrees: Show Logs"
       }
     ],
     "configuration": {
-      "title": "Worktrees",
+      "title": "Git Worktree Switcher",
       "properties": {
-        "vscode-worktrees.autoAddOnStartup": {
+        "vscode-git-worktree-switcher.autoAddOnStartup": {
           "type": "boolean",
           "default": false,
           "description": "On startup, automatically add all sibling worktrees of the current workspace folder."

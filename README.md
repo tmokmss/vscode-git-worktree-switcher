@@ -1,6 +1,6 @@
-# Worktrees
+# Git Worktree Switcher
 
-A VS Code extension for managing git worktrees in a single window. Designed for use with Claude Code, where worktrees are created frequently as part of agentic workflows and you want to inspect them without losing your current Claude session state.
+A VS Code extension for switching between git worktrees in a single window. Designed for use with Claude Code, where worktrees are created frequently as part of agentic workflows and you want to inspect them without losing your current Claude session state.
 
 ## Why
 
@@ -31,7 +31,7 @@ If your workspace folder contains multiple git repositories (e.g. `~/projects/mo
 
 ## Settings
 
-- `vscode-worktrees.autoAddOnStartup` (default: `false`) — On startup, automatically run "Show All" to add every discovered worktree to the workspace.
+- `vscode-git-worktree-switcher.autoAddOnStartup` (default: `false`) — On startup, automatically run "Show All" to add every discovered worktree to the workspace.
 
 ## Limitations
 

@@ -29,12 +29,12 @@ function log(msg: string): void {
 
 export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
-        vscode.commands.registerCommand("vscode-worktrees.addWorktree", () => addWorktreeCommand()),
-        vscode.commands.registerCommand("vscode-worktrees.focusWorktree", () => focusWorktreeCommand()),
-        vscode.commands.registerCommand("vscode-worktrees.unfocusWorktree", () => unfocusWorktreeCommand()),
-        vscode.commands.registerCommand("vscode-worktrees.removeWorktreeFolder", () => removeWorktreeFolderCommand()),
-        vscode.commands.registerCommand("vscode-worktrees.refreshWorktrees", () => refreshCommand()),
-        vscode.commands.registerCommand("vscode-worktrees.showLogs", () => {
+        vscode.commands.registerCommand("vscode-git-worktree-switcher.addWorktree", () => addWorktreeCommand()),
+        vscode.commands.registerCommand("vscode-git-worktree-switcher.focusWorktree", () => focusWorktreeCommand()),
+        vscode.commands.registerCommand("vscode-git-worktree-switcher.unfocusWorktree", () => unfocusWorktreeCommand()),
+        vscode.commands.registerCommand("vscode-git-worktree-switcher.removeWorktreeFolder", () => removeWorktreeFolderCommand()),
+        vscode.commands.registerCommand("vscode-git-worktree-switcher.refreshWorktrees", () => refreshCommand()),
+        vscode.commands.registerCommand("vscode-git-worktree-switcher.showLogs", () => {
             if (!outputChannel) {outputChannel = vscode.window.createOutputChannel("Worktrees");}
             outputChannel.show();
         }),
@@ -48,7 +48,7 @@ export function activate(context: vscode.ExtensionContext) {
         void getRepos().catch((e) => log(`Pre-warm failed: ${e instanceof Error ? e.message : String(e)}`));
     }, 100);
 
-    if (vscode.workspace.getConfiguration().get<boolean>("vscode-worktrees.autoAddOnStartup", false)) {
+    if (vscode.workspace.getConfiguration().get<boolean>("vscode-git-worktree-switcher.autoAddOnStartup", false)) {
         void unfocusWorktreeCommand(true);
     }
 }
