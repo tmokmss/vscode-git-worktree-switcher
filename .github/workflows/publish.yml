@@ -11,18 +11,25 @@
 #   AZURE_CLIENT_ID  — App Registration's "Application (client) ID"
 #   AZURE_TENANT_ID  — Directory (tenant) ID
 #
-# Required Azure setup (one-time):
-#   1. Microsoft Entra ID → App registrations → New registration
+# Required Azure / GitHub setup (one-time):
+#   1. GitHub repo → Settings → Environments → New environment "production"
+#      (optionally add protection rules: required reviewers, wait timer, etc.)
+#   2. Microsoft Entra ID → App registrations → New registration
 #      (any name; single tenant; no redirect URI)
-#   2. App → Certificates & secrets → Federated credentials → Add credential:
-#        - Scenario: GitHub Actions
+#   3. App → Certificates & secrets → Federated credentials → Add credential:
+#        - Scenario: GitHub Actions deploying Azure resources
 #        - Owner: tmokmss
 #        - Repository: vscode-git-worktree-switcher
-#        - Entity type: Tag, pattern `v*` (and optionally another for `workflow_dispatch`)
+#        - Entity type: Environment
+#        - Environment name: production
 #        - Audience: api://AzureADTokenExchange
-#   3. Add the App Registration as a Member of the Marketplace publisher
+#      (Standard tag/branch credentials require exact match, no wildcards.
+#       Environment-based works cleanly for tag pushes and workflow_dispatch.)
+#   4. Add the App Registration as a Member of the Marketplace publisher
 #      (https://marketplace.visualstudio.com/manage/publishers/<your-id>)
-#      with role = Creator (or higher).
+#      with role = Creator (or higher). Use the SP's Profile ID (TFS Identity
+#      ID), obtained from GET https://app.vssps.visualstudio.com/_apis/profile/profiles/me
+#      while authenticated as the SP.
 #
 # To publish a new version:
 #   npm version patch    # or minor / major
@@ -44,6 +51,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - uses: actions/checkout@v4
 
