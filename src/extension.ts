@@ -1,10 +1,11 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { getGitCommonDir, listWorktrees, type Worktree } from "./git";
+import { getGitCommonDir, getSuperprojectPath, listWorktrees, type Worktree } from "./git";
 import { focusOn } from "./focus";
 import {
-    buildMultiRepoShowAllEntries,
+    buildRepoFocusSwap,
+    buildRootsOnlyEntries,
     repoDisplayName,
     shouldDescendInto,
     worktreeLabel,
@@ -87,16 +88,42 @@ async function getExistingFolders(): Promise<ExistingFolder[]> {
 
 async function getRepoSnapshot(cwd: string): Promise<RepoSnapshot | undefined> {
     try {
-        const [commonDir, worktrees] = await Promise.all([
+        const [commonDir, worktrees, superproject] = await Promise.all([
             getGitCommonDir(cwd),
             listWorktrees(cwd),
+            getSuperprojectPath(cwd),
         ]);
-        return { commonDir, name: repoDisplayName(commonDir, worktrees), worktrees };
+        if (superproject) {
+            log(`Skipping submodule at ${cwd} (superproject=${superproject})`);
+            return undefined;
+        }
+        const realWorktrees = await filterRealWorktrees(worktrees);
+        return {
+            commonDir,
+            name: repoDisplayName(commonDir, realWorktrees),
+            worktrees: realWorktrees,
+        };
     } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         log(`getRepoSnapshot failed at ${cwd}: ${msg}`);
         return undefined;
     }
+}
+
+async function filterRealWorktrees(worktrees: Worktree[]): Promise<Worktree[]> {
+    const checks = await Promise.all(
+        worktrees.map(async (w) => {
+            if (w.bare) {return { w, keep: true };}
+            const isInsideGitDir = w.path.includes("/.git/");
+            const isWorking = await isGitWorkingDir(w.path);
+            const keep = !isInsideGitDir && isWorking;
+            if (!keep) {
+                log(`Filtered out non-working-tree worktree: ${w.path} (isInsideGitDir=${isInsideGitDir}, isWorking=${isWorking})`);
+            }
+            return { w, keep };
+        })
+    );
+    return checks.filter((c) => c.keep).map((c) => c.w);
 }
 
 async function isGitWorkingDir(p: string): Promise<boolean> {
@@ -152,9 +179,10 @@ async function refreshCommand(): Promise<void> {
     repoCache = null;
     const t0 = Date.now();
     const repos = await getRepos(true);
-    const total = repos.reduce((sum, r) => sum + r.worktrees.filter((w) => !w.bare).length, 0);
+    log(`Refresh: ${repos.length} repo(s) in ${Date.now() - t0}ms`);
+    await unfocusWorktreeCommand(true);
     vscode.window.showInformationMessage(
-        `Refreshed: ${repos.length} repo(s), ${total} worktree(s) in ${Date.now() - t0}ms`
+        `Refreshed ${repos.length} repo(s) in ${Date.now() - t0}ms`
     );
 }
 
@@ -283,22 +311,19 @@ async function focusWorktreeCommand(): Promise<void> {
     }
 
     const picked = await vscode.window.showQuickPick(items, {
-        placeHolder: "Focus on a worktree (workspace will be replaced with just this folder)",
+        placeHolder: "Focus on a worktree (other repos in this workspace are preserved)",
         matchOnDescription: true,
     });
     if (!picked) {return;}
 
-    const showRepoPrefix = repos.length > 1;
-    const label = showRepoPrefix
-        ? `${picked.repo.name} / ${worktreeLabel(picked.worktree)}`
-        : worktreeLabel(picked.worktree);
-
+    const current = await getExistingFolders();
+    const entries = buildRepoFocusSwap(current, repos, picked.repo, picked.worktree.path);
     const changeAwaiter = waitForWorkspaceFoldersChange();
-    const ok = focusOn([{ uri: vscode.Uri.file(picked.worktree.path), name: label }]);
+    const ok = focusOn(toFolderEntries(entries));
     if (ok) {
         await changeAwaiter;
         await collapseExplorer();
-        vscode.window.showInformationMessage(`Focused: ${label}`);
+        vscode.window.showInformationMessage(`Focused: ${worktreeLabel(picked.worktree)}`);
     }
 }
 
@@ -316,7 +341,7 @@ async function unfocusWorktreeCommand(silent = false): Promise<void> {
     }
 
     const current = await getExistingFolders();
-    const entries = buildMultiRepoShowAllEntries(current, repos);
+    const entries = buildRootsOnlyEntries(repos, current);
     if (entries.length === 0) {return;}
 
     const changeAwaiter = waitForWorkspaceFoldersChange();
@@ -324,7 +349,7 @@ async function unfocusWorktreeCommand(silent = false): Promise<void> {
     if (ok) {
         await changeAwaiter;
         await collapseExplorer();
-        if (!silent) {vscode.window.showInformationMessage("Showing all worktrees.");}
+        if (!silent) {vscode.window.showInformationMessage("Reset to root worktree(s).");}
     }
 }
 

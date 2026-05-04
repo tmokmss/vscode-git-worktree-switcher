@@ -103,6 +103,68 @@ export function buildMultiRepoShowAllEntries(
     return dedupeByPath(out);
 }
 
+export function buildRootsOnlyEntries(
+    repos: RepoSnapshot[],
+    extraFolders: ExistingFolder[] = []
+): RootEntry[] {
+    const showPrefix = repos.length > 1;
+    const out: RootEntry[] = [];
+
+    for (const repo of repos) {
+        const root = determineRoot(repo.worktrees, showPrefix ? repo.name : undefined);
+        if (root) {out.push(root);}
+    }
+
+    for (const f of extraFolders) {
+        if (f.commonDir === null) {
+            out.push({ path: f.path, label: f.name });
+        }
+    }
+
+    return dedupeByPath(out);
+}
+
+export function buildRepoFocusSwap(
+    current: ExistingFolder[],
+    repos: RepoSnapshot[],
+    focusedRepo: RepoSnapshot,
+    focusedWorktreePath: string
+): RootEntry[] {
+    const showPrefix = repos.length > 1;
+    const focused = focusedRepo.worktrees.find((w) => w.path === focusedWorktreePath);
+    if (!focused) {
+        return current.map((f) => ({ path: f.path, label: f.name }));
+    }
+
+    const focusedEntry: RootEntry = {
+        path: focused.path,
+        label: withPrefix(showPrefix ? focusedRepo.name : undefined, worktreeLabel(focused)),
+    };
+
+    const hasRepoInWorkspace = current.some((f) => f.commonDir === focusedRepo.commonDir);
+
+    if (!hasRepoInWorkspace) {
+        return dedupeByPath([
+            ...current.map((f) => ({ path: f.path, label: f.name })),
+            focusedEntry,
+        ]);
+    }
+
+    const out: RootEntry[] = [];
+    let inserted = false;
+    for (const f of current) {
+        if (f.commonDir === focusedRepo.commonDir) {
+            if (!inserted) {
+                out.push(focusedEntry);
+                inserted = true;
+            }
+        } else {
+            out.push({ path: f.path, label: f.name });
+        }
+    }
+    return dedupeByPath(out);
+}
+
 function orderReposByFirstAppearance(
     repos: RepoSnapshot[],
     current: ExistingFolder[]

@@ -3,6 +3,8 @@ import type { Worktree } from "../src/git";
 import {
     buildFocusEntries,
     buildMultiRepoShowAllEntries,
+    buildRepoFocusSwap,
+    buildRootsOnlyEntries,
     buildShowAllEntries,
     dedupeByPath,
     determineRoot,
@@ -161,6 +163,140 @@ describe("shouldDescendInto", () => {
         expect(shouldDescendInto("repos")).toBe(true);
         expect(shouldDescendInto("repo1")).toBe(true);
         expect(shouldDescendInto("src")).toBe(true);
+    });
+});
+
+describe("buildRootsOnlyEntries", () => {
+    const repo1: RepoSnapshot = {
+        commonDir: "/repo1/.git",
+        name: "repo1",
+        worktrees: [
+            wt({ path: "/repo1/main", branch: "main" }),
+            wt({ path: "/repo1/feat-a", branch: "feat-a" }),
+        ],
+    };
+    const repo2: RepoSnapshot = {
+        commonDir: "/repo2/.git",
+        name: "repo2",
+        worktrees: [
+            wt({ path: "/repo2/main", branch: "main" }),
+            wt({ path: "/repo2/feat-x", branch: "feat-x" }),
+        ],
+    };
+
+    it("returns one root entry per repo with prefix when multi-repo", () => {
+        expect(buildRootsOnlyEntries([repo1, repo2])).toEqual([
+            { path: "/repo1/main", label: "repo1 / main" },
+            { path: "/repo2/main", label: "repo2 / main" },
+        ]);
+    });
+
+    it("does not prefix when only one repo", () => {
+        expect(buildRootsOnlyEntries([repo1])).toEqual([
+            { path: "/repo1/main", label: "main" },
+        ]);
+    });
+
+    it("preserves non-git extra folders", () => {
+        const extras: ExistingFolder[] = [
+            { path: "/notes", name: "notes", commonDir: null },
+            { path: "/repo1/main", name: "main", commonDir: repo1.commonDir },
+        ];
+        expect(buildRootsOnlyEntries([repo1], extras)).toEqual([
+            { path: "/repo1/main", label: "main" },
+            { path: "/notes", label: "notes" },
+        ]);
+    });
+
+    it("skips bare-only repos (no main worktree to use as root)", () => {
+        const bareOnly: RepoSnapshot = {
+            commonDir: "/bareonly/.git",
+            name: "bareonly",
+            worktrees: [wt({ path: "/bareonly/.git", branch: null, bare: true })],
+        };
+        expect(buildRootsOnlyEntries([bareOnly])).toEqual([]);
+    });
+});
+
+describe("buildRepoFocusSwap", () => {
+    const repo1: RepoSnapshot = {
+        commonDir: "/repo1/.git",
+        name: "repo1",
+        worktrees: [
+            wt({ path: "/repo1/main", branch: "main" }),
+            wt({ path: "/repo1/feat-a", branch: "feat-a" }),
+            wt({ path: "/repo1/feat-b", branch: "feat-b" }),
+        ],
+    };
+    const repo2: RepoSnapshot = {
+        commonDir: "/repo2/.git",
+        name: "repo2",
+        worktrees: [
+            wt({ path: "/repo2/main", branch: "main" }),
+            wt({ path: "/repo2/feat-x", branch: "feat-x" }),
+        ],
+    };
+
+    it("replaces focused repo's slot, keeps other repos untouched", () => {
+        const current: ExistingFolder[] = [
+            { path: "/repo1/main", name: "repo1 / main", commonDir: repo1.commonDir },
+            { path: "/repo2/main", name: "repo2 / main", commonDir: repo2.commonDir },
+        ];
+
+        const result = buildRepoFocusSwap(current, [repo1, repo2], repo1, "/repo1/feat-b");
+
+        expect(result).toEqual([
+            { path: "/repo1/feat-b", label: "repo1 / feat-b" },
+            { path: "/repo2/main", label: "repo2 / main" },
+        ]);
+    });
+
+    it("appends focused worktree if its repo is not yet in workspace", () => {
+        const current: ExistingFolder[] = [
+            { path: "/repo2/main", name: "repo2 / main", commonDir: repo2.commonDir },
+        ];
+
+        const result = buildRepoFocusSwap(current, [repo1, repo2], repo1, "/repo1/feat-a");
+
+        expect(result).toEqual([
+            { path: "/repo2/main", label: "repo2 / main" },
+            { path: "/repo1/feat-a", label: "repo1 / feat-a" },
+        ]);
+    });
+
+    it("consolidates multiple folders of the same repo into the focused one", () => {
+        const current: ExistingFolder[] = [
+            { path: "/repo1/main", name: "repo1 / main", commonDir: repo1.commonDir },
+            { path: "/repo1/feat-a", name: "repo1 / feat-a", commonDir: repo1.commonDir },
+            { path: "/repo2/main", name: "repo2 / main", commonDir: repo2.commonDir },
+        ];
+
+        const result = buildRepoFocusSwap(current, [repo1, repo2], repo1, "/repo1/feat-b");
+
+        expect(result).toEqual([
+            { path: "/repo1/feat-b", label: "repo1 / feat-b" },
+            { path: "/repo2/main", label: "repo2 / main" },
+        ]);
+    });
+
+    it("does not prefix labels when only one repo is known", () => {
+        const current: ExistingFolder[] = [
+            { path: "/repo1/main", name: "main", commonDir: repo1.commonDir },
+        ];
+
+        const result = buildRepoFocusSwap(current, [repo1], repo1, "/repo1/feat-a");
+
+        expect(result).toEqual([{ path: "/repo1/feat-a", label: "feat-a" }]);
+    });
+
+    it("returns current unchanged when focused worktree path is unknown", () => {
+        const current: ExistingFolder[] = [
+            { path: "/repo1/main", name: "main", commonDir: repo1.commonDir },
+        ];
+
+        const result = buildRepoFocusSwap(current, [repo1], repo1, "/repo1/does-not-exist");
+
+        expect(result).toEqual([{ path: "/repo1/main", label: "main" }]);
     });
 });
 

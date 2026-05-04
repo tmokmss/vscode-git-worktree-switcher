@@ -25,6 +25,19 @@ export async function getGitCommonDir(cwd: string): Promise<string> {
     return stdout.trim();
 }
 
+export async function getSuperprojectPath(cwd: string): Promise<string> {
+    try {
+        const { stdout } = await execFileP(
+            "git",
+            ["rev-parse", "--show-superproject-working-tree"],
+            { cwd }
+        );
+        return stdout.trim();
+    } catch {
+        return "";
+    }
+}
+
 export async function listWorktrees(cwd: string): Promise<Worktree[]> {
     const { stdout } = await execFileP("git", ["worktree", "list", "--porcelain"], { cwd });
     return parsePorcelain(stdout);
