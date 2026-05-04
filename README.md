@@ -56,4 +56,4 @@ Press **F5** in VS Code to launch the Extension Development Host.
 
 ## License
 
-MIT (placeholder — add a LICENSE file if you intend to publish).
+MIT — see [LICENSE](./LICENSE).
