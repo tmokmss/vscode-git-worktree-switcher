@@ -1,0 +1,68 @@
+# Publishes the extension to the VS Code Marketplace.
+#
+# Triggers:
+#   - Tag push matching `v*` (preferred — bump version + push tag from local).
+#   - Manual `workflow_dispatch` from the Actions tab.
+#
+# Auth: GitHub OIDC → Azure AD federated credential → vsce uses the resulting
+# Azure token via `--azure-credential`. No PAT secrets needed.
+#
+# Required GitHub repository variables (Settings → Secrets and variables → Actions → Variables):
+#   AZURE_CLIENT_ID  — App Registration's "Application (client) ID"
+#   AZURE_TENANT_ID  — Directory (tenant) ID
+#
+# Required Azure setup (one-time):
+#   1. Microsoft Entra ID → App registrations → New registration
+#      (any name; single tenant; no redirect URI)
+#   2. App → Certificates & secrets → Federated credentials → Add credential:
+#        - Scenario: GitHub Actions
+#        - Owner: tmokmss
+#        - Repository: vscode-git-worktree-switcher
+#        - Entity type: Tag, pattern `v*` (and optionally another for `workflow_dispatch`)
+#        - Audience: api://AzureADTokenExchange
+#   3. Add the App Registration as a Member of the Marketplace publisher
+#      (https://marketplace.visualstudio.com/manage/publishers/<your-id>)
+#      with role = Creator (or higher).
+#
+# To publish a new version:
+#   npm version patch    # or minor / major
+#   git push && git push --tags
+# The tag push triggers this workflow.
+
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - run: npm run package
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Publish to VS Code Marketplace
+        run: npx @vscode/vsce publish --azure-credential
