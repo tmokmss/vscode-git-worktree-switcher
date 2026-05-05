@@ -1,0 +1,87 @@
+# One-shot release pipeline. Triggered via workflow_dispatch with a version
+# bump input (patch / minor / major). Bumps package.json, commits, tags,
+# pushes, publishes to the VS Code Marketplace via OIDC, then creates a
+# GitHub Release with auto-generated notes.
+#
+# Why everything in one workflow:
+#   GITHUB_TOKEN-created tag/release events do NOT trigger downstream
+#   workflows (GitHub's loop-prevention rule), so we cannot rely on the
+#   tag-push trigger in publish.yml to chain. Doing it all here keeps the
+#   pipeline atomic.
+#
+# Failure modes:
+#   - Test/build failure before bump → no remote changes, safe to retry.
+#   - Publish failure after tag push → tag exists in git but Marketplace
+#     doesn't have it. Recover by running publish.yml manually (uses the
+#     bumped version in package.json).
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        id: bump
+        run: |
+          NEW_TAG=$(npm version ${{ inputs.bump }} --message "chore: release %s")
+          echo "tag=${NEW_TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${NEW_TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Push commit and tag
+        run: git push --follow-tags
+
+      - run: npm run package
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Publish to VS Code Marketplace
+        run: npx @vscode/vsce publish --azure-credential
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.bump.outputs.tag }}" \
+            --title "${{ steps.bump.outputs.tag }}" \
+            --generate-notes
