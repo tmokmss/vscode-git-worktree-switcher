@@ -7,9 +7,11 @@
 # Auth: GitHub OIDC → Azure AD federated credential → vsce uses the resulting
 # Azure token via `--azure-credential`. No PAT secrets needed.
 #
-# Required GitHub repository variables (Settings → Secrets and variables → Actions → Variables):
+# Required GitHub repository secrets (Settings → Secrets and variables → Actions → Secrets):
 #   AZURE_CLIENT_ID  — App Registration's "Application (client) ID"
 #   AZURE_TENANT_ID  — Directory (tenant) ID
+# (Microsoft's OIDC guide recommends Secrets for these IDs even though they
+#  are not cryptographically sensitive on their own — defense in depth.)
 #
 # Required Azure / GitHub setup (one-time):
 #   1. GitHub repo → Settings → Environments → New environment "production"
@@ -68,8 +70,8 @@ jobs:
 
       - uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           allow-no-subscriptions: true
 
       - name: Publish to VS Code Marketplace
