@@ -3,17 +3,20 @@
 # pushes, publishes to the VS Code Marketplace via OIDC, then creates a
 # GitHub Release with auto-generated notes.
 #
+# Tests are NOT run here. Run CI first (it runs on every push to main and
+# every PR) and only release after CI is green.
+#
 # Why everything in one workflow:
-#   GITHUB_TOKEN-created tag/release events do NOT trigger downstream
-#   workflows (GitHub's loop-prevention rule), so we cannot rely on the
-#   tag-push trigger in publish.yml to chain. Doing it all here keeps the
-#   pipeline atomic.
+#   GITHUB_TOKEN-created tag pushes do NOT trigger downstream workflows
+#   (GitHub's loop-prevention rule). Doing it all here keeps the pipeline
+#   atomic without needing a PAT.
 #
 # Failure modes:
-#   - Test/build failure before bump → no remote changes, safe to retry.
-#   - Publish failure after tag push → tag exists in git but Marketplace
-#     doesn't have it. Recover by running publish.yml manually (uses the
-#     bumped version in package.json).
+#   - Build failure before bump → no remote changes, safe to retry.
+#   - Publish failure after tag push → tag and commit exist in git but
+#     Marketplace doesn't have it. Recover by running `npx @vscode/vsce
+#     publish --azure-credential` locally, or temporarily re-add a publish
+#     workflow.
 
 name: Release
 
@@ -49,8 +52,6 @@ jobs:
           cache: npm
 
       - run: npm ci
-
-      - run: npm test
 
       - name: Configure git
         run: |
