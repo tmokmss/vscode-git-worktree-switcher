@@ -1,50 +1,55 @@
-# One-shot release pipeline. Triggered via workflow_dispatch with a version
-# bump input (patch / minor / major). Bumps package.json, commits, tags,
-# pushes, publishes to the VS Code Marketplace via OIDC, then creates a
-# GitHub Release with auto-generated notes.
+# Release pipeline driven by release-please.
 #
-# Tests are NOT run here. Run CI first (it runs on every push to main and
-# every PR) and only release after CI is green.
+# Flow:
+#   1. Every push to main runs release-please. It scans Conventional Commits
+#      since the last release.
+#   2. If there are releasable commits (feat/fix/perf/revert/breaking),
+#      release-please maintains a "release PR" on a branch
+#      `release-please--branches--main` containing:
+#        - bumped package.json version
+#        - updated CHANGELOG.md with categorized entries
+#   3. Merging the release PR causes the next run to create:
+#        - a git tag (vX.Y.Z)
+#        - a GitHub Release with CHANGELOG-derived notes
+#   4. When a release is created in step 3, the `publish` job below fires
+#      and pushes the .vsix to the VS Code Marketplace via OIDC.
 #
-# Why everything in one workflow:
-#   GITHUB_TOKEN-created tag pushes do NOT trigger downstream workflows
-#   (GitHub's loop-prevention rule). Doing it all here keeps the pipeline
-#   atomic without needing a PAT.
-#
-# Failure modes:
-#   - Build failure before bump → no remote changes, safe to retry.
-#   - Publish failure after tag push → tag and commit exist in git but
-#     Marketplace doesn't have it. Recover by running `npx @vscode/vsce
-#     publish --azure-credential` locally, or temporarily re-add a publish
-#     workflow.
+# Tests are NOT run here — they run in ci.yml on every push and PR. Releases
+# are expected to be cut from green main.
 
 name: Release
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      bump:
-        description: "Version bump"
-        required: true
-        default: "patch"
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
 
 permissions:
   contents: write
+  pull-requests: write
   id-token: write
 
 jobs:
-  release:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          release-type: node
+
+  publish:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: ${{ needs.release-please.outputs.tag_name }}
 
       - uses: actions/setup-node@v4
         with:
@@ -52,21 +57,6 @@ jobs:
           cache: npm
 
       - run: npm ci
-
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Bump version
-        id: bump
-        run: |
-          NEW_TAG=$(npm version ${{ inputs.bump }} --message "chore: release %s")
-          echo "tag=${NEW_TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${NEW_TAG#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Push commit and tag
-        run: git push --follow-tags
 
       - run: npm run package
 
@@ -78,11 +68,3 @@ jobs:
 
       - name: Publish to VS Code Marketplace
         run: npx @vscode/vsce publish --azure-credential
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "${{ steps.bump.outputs.tag }}" \
-            --title "${{ steps.bump.outputs.tag }}" \
-            --generate-notes
