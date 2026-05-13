@@ -67,6 +67,11 @@
           "type": "boolean",
           "default": false,
           "description": "On startup, automatically add all sibling worktrees of the current workspace folder."
+        },
+        "vscode-git-worktree-switcher.overrideWindowTitle": {
+          "type": "boolean",
+          "default": true,
+          "description": "Override window.title at the workspace level so the title bar / Command Center shows the repository root directory name instead of 'Untitled (Workspace)'."
         }
       }
     }
