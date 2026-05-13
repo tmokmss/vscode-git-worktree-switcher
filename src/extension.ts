@@ -42,11 +42,17 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.workspace.onDidChangeWorkspaceFolders(() => {
             log(`Workspace folders changed → invalidating cache`);
             repoCache = null;
+            void updateWindowTitle();
         })
     );
 
-    setTimeout(() => {
-        void getRepos().catch((e) => log(`Pre-warm failed: ${e instanceof Error ? e.message : String(e)}`));
+    setTimeout(async () => {
+        try {
+            await getRepos();
+            await updateWindowTitle();
+        } catch (e) {
+            log(`Pre-warm failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
     }, 100);
 
     if (vscode.workspace.getConfiguration().get<boolean>("vscode-git-worktree-switcher.autoAddOnStartup", false)) {
@@ -54,7 +60,49 @@ export function activate(context: vscode.ExtensionContext) {
     }
 }
 
-export function deactivate() {}
+export function deactivate() {
+    try {
+        void vscode.workspace
+            .getConfiguration("window")
+            .update("title", undefined, vscode.ConfigurationTarget.Workspace);
+    } catch {
+        // best-effort cleanup
+    }
+}
+
+async function updateWindowTitle(): Promise<void> {
+    if (!vscode.workspace.getConfiguration().get<boolean>("vscode-git-worktree-switcher.overrideWindowTitle", true)) {
+        return;
+    }
+
+    let rootName: string | null = null;
+    try {
+        const repos = await getRepos();
+        if (repos.length > 0) {
+            rootName = repos[0].name;
+        }
+    } catch (e) {
+        log(`updateWindowTitle: getRepos failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    if (!rootName) {
+        const folders = vscode.workspace.workspaceFolders ?? [];
+        if (folders.length === 0) {return;}
+        rootName = path.basename(folders[0].uri.fsPath);
+    }
+
+    const safe = rootName.replace(/\$\{/g, "$ {");
+    const title = `\${dirty}\${activeEditorShort}\${separator}${safe}\${separator}\${profileName}\${separator}\${appName}`;
+
+    try {
+        await vscode.workspace
+            .getConfiguration("window")
+            .update("title", title, vscode.ConfigurationTarget.Workspace);
+        log(`Set window.title rootName="${rootName}"`);
+    } catch (e) {
+        log(`Failed to set window.title: ${e instanceof Error ? e.message : String(e)}`);
+    }
+}
 
 async function pickAnchorFolder(): Promise<vscode.WorkspaceFolder | undefined> {
     const folders = vscode.workspace.workspaceFolders ?? [];
