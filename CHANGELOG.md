@@ -4,6 +4,13 @@ All notable changes to the "vscode-worktrees" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.1](https://github.com/tmokmss/vscode-git-worktree-switcher/compare/v0.1.0...v0.1.1) (2026-05-15)
+
+
+### Bug Fixes
+
+* recover when focused worktree is deleted on disk ([#3](https://github.com/tmokmss/vscode-git-worktree-switcher/issues/3)) ([ff461be](https://github.com/tmokmss/vscode-git-worktree-switcher/commit/ff461be5bee5b10479b44ea63c53275e5646752d))
+
 ## [0.1.0](https://github.com/tmokmss/vscode-git-worktree-switcher/compare/v0.0.2...v0.1.0) (2026-05-13)
 
 
