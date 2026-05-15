@@ -4,6 +4,13 @@ All notable changes to the "vscode-worktrees" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.2.0](https://github.com/tmokmss/vscode-git-worktree-switcher/compare/v0.1.1...v0.2.0) (2026-05-15)
+
+
+### Features
+
+* add extension icon ([#5](https://github.com/tmokmss/vscode-git-worktree-switcher/issues/5)) ([aef7a51](https://github.com/tmokmss/vscode-git-worktree-switcher/commit/aef7a517bd48714668cf4202017548459baa08dc))
+
 ## [0.1.1](https://github.com/tmokmss/vscode-git-worktree-switcher/compare/v0.1.0...v0.1.1) (2026-05-15)
 
 
