@@ -5,6 +5,7 @@
   "version": "0.1.1",
   "publisher": "tmokmss",
   "license": "MIT",
+  "icon": "images/icon.png",
   "homepage": "https://github.com/tmokmss/vscode-git-worktree-switcher#readme",
   "repository": {
     "type": "git",
