@@ -8,9 +8,11 @@ import {
     buildShowAllEntries,
     dedupeByPath,
     determineRoot,
+    planWorkspaceRecovery,
     shouldDescendInto,
     worktreeLabel,
     type ExistingFolder,
+    type RecoveryFolder,
     type RepoSnapshot,
 } from "../src/worktrees";
 
@@ -390,5 +392,144 @@ describe("buildMultiRepoShowAllEntries", () => {
         const result = buildMultiRepoShowAllEntries(current, [repo1]);
 
         expect(result.map((e) => e.path)).toEqual(["/repo1/main", "/repo1/feat-a", "/notes"]);
+    });
+});
+
+describe("planWorkspaceRecovery", () => {
+    const repo1: RepoSnapshot = {
+        commonDir: "/repo1/.git",
+        name: "repo1",
+        worktrees: [
+            wt({ path: "/repo1/main", branch: "main" }),
+            wt({ path: "/repo1/feat-a", branch: "feat-a" }),
+        ],
+    };
+    const repo2: RepoSnapshot = {
+        commonDir: "/repo2/.git",
+        name: "repo2",
+        worktrees: [
+            wt({ path: "/repo2/main", branch: "main" }),
+            wt({ path: "/repo2/feat-x", branch: "feat-x" }),
+        ],
+    };
+
+    const aliveAll = () => true;
+
+    it("returns empty when every folder exists (no recovery needed)", () => {
+        const folders: RecoveryFolder[] = [
+            { path: "/repo1/main", name: "main", exists: true, commonDir: repo1.commonDir },
+        ];
+        const result = planWorkspaceRecovery({
+            folders,
+            survivingRepos: [repo1],
+            cachedRepos: [repo1],
+            isAlive: aliveAll,
+        });
+        expect(result).toEqual([]);
+    });
+
+    it("restores to repo root when the focused worktree path disappeared", () => {
+        const folders: RecoveryFolder[] = [
+            { path: "/repo1/feat-a", name: "feat-a", exists: false, commonDir: null },
+        ];
+        const result = planWorkspaceRecovery({
+            folders,
+            survivingRepos: [],
+            cachedRepos: [repo1],
+            isAlive: (p) => p === "/repo1/main",
+        });
+        expect(result).toEqual([{ path: "/repo1/main", label: "main" }]);
+    });
+
+    it("drops cached repos whose own main worktree is also gone", () => {
+        const folders: RecoveryFolder[] = [
+            { path: "/repo1/feat-a", name: "feat-a", exists: false, commonDir: null },
+        ];
+        const result = planWorkspaceRecovery({
+            folders,
+            survivingRepos: [],
+            cachedRepos: [repo1],
+            isAlive: () => false,
+        });
+        expect(result).toEqual([]);
+    });
+
+    it("prefers surviving discovery over cache for the same repo", () => {
+        const renamed: RepoSnapshot = {
+            commonDir: repo1.commonDir,
+            name: "repo1-renamed",
+            worktrees: [wt({ path: "/repo1/main", branch: "main" })],
+        };
+        const folders: RecoveryFolder[] = [
+            { path: "/repo1/main", name: "main", exists: true, commonDir: repo1.commonDir },
+            { path: "/repo1/feat-a", name: "feat-a", exists: false, commonDir: null },
+        ];
+        const result = planWorkspaceRecovery({
+            folders,
+            survivingRepos: [renamed],
+            cachedRepos: [repo1],
+            isAlive: aliveAll,
+        });
+        expect(result).toEqual([{ path: "/repo1/main", label: "main" }]);
+    });
+
+    it("dedupes survivingRepos passed in raw", () => {
+        const folders: RecoveryFolder[] = [
+            { path: "/repo1/feat-a", name: "feat-a", exists: false, commonDir: null },
+        ];
+        const result = planWorkspaceRecovery({
+            folders,
+            survivingRepos: [repo1, repo1],
+            cachedRepos: [],
+            isAlive: aliveAll,
+        });
+        expect(result).toEqual([{ path: "/repo1/main", label: "main" }]);
+    });
+
+    it("restores multi-repo roots when one repo's worktree dies", () => {
+        const folders: RecoveryFolder[] = [
+            { path: "/repo1/feat-a", name: "feat-a", exists: false, commonDir: null },
+            { path: "/repo2/main", name: "repo2 / main", exists: true, commonDir: repo2.commonDir },
+        ];
+        const result = planWorkspaceRecovery({
+            folders,
+            survivingRepos: [repo2],
+            cachedRepos: [repo1, repo2],
+            isAlive: aliveAll,
+        });
+        expect(result).toEqual([
+            { path: "/repo2/main", label: "repo2 / main" },
+            { path: "/repo1/main", label: "repo1 / main" },
+        ]);
+    });
+
+    it("preserves surviving non-git folders", () => {
+        const folders: RecoveryFolder[] = [
+            { path: "/repo1/feat-a", name: "feat-a", exists: false, commonDir: null },
+            { path: "/notes", name: "notes", exists: true, commonDir: null },
+        ];
+        const result = planWorkspaceRecovery({
+            folders,
+            survivingRepos: [],
+            cachedRepos: [repo1],
+            isAlive: aliveAll,
+        });
+        expect(result).toEqual([
+            { path: "/repo1/main", label: "main" },
+            { path: "/notes", label: "notes" },
+        ]);
+    });
+
+    it("returns empty when there is nothing to fall back to", () => {
+        const folders: RecoveryFolder[] = [
+            { path: "/repo1/feat-a", name: "feat-a", exists: false, commonDir: null },
+        ];
+        const result = planWorkspaceRecovery({
+            folders,
+            survivingRepos: [],
+            cachedRepos: [],
+            isAlive: aliveAll,
+        });
+        expect(result).toEqual([]);
     });
 });

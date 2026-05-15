@@ -6,10 +6,12 @@ import { focusOn } from "./focus";
 import {
     buildRepoFocusSwap,
     buildRootsOnlyEntries,
+    planWorkspaceRecovery,
     repoDisplayName,
     shouldDescendInto,
     worktreeLabel,
     type ExistingFolder,
+    type RecoveryFolder,
     type RepoSnapshot,
     type RootEntry,
 } from "./worktrees";
@@ -18,6 +20,8 @@ const REPO_DISCOVERY_MAX_DEPTH = 2;
 const CACHE_TTL_MS = 60_000;
 
 let repoCache: { repos: RepoSnapshot[]; timestamp: number } | null = null;
+let lastKnownRepos: RepoSnapshot[] = [];
+let recovering = false;
 
 let outputChannel: vscode.OutputChannel | null = null;
 function log(msg: string): void {
@@ -29,26 +33,39 @@ function log(msg: string): void {
 }
 
 export function activate(context: vscode.ExtensionContext) {
+    const cmd = (name: string, fn: () => Promise<void> | void) =>
+        vscode.commands.registerCommand(name, async () => {
+            await verifyAndRecoverWorkspace();
+            await fn();
+        });
+
     context.subscriptions.push(
-        vscode.commands.registerCommand("vscode-git-worktree-switcher.addWorktree", () => addWorktreeCommand()),
-        vscode.commands.registerCommand("vscode-git-worktree-switcher.focusWorktree", () => focusWorktreeCommand()),
-        vscode.commands.registerCommand("vscode-git-worktree-switcher.unfocusWorktree", () => unfocusWorktreeCommand()),
-        vscode.commands.registerCommand("vscode-git-worktree-switcher.removeWorktreeFolder", () => removeWorktreeFolderCommand()),
-        vscode.commands.registerCommand("vscode-git-worktree-switcher.refreshWorktrees", () => refreshCommand()),
+        cmd("vscode-git-worktree-switcher.addWorktree", () => addWorktreeCommand()),
+        cmd("vscode-git-worktree-switcher.focusWorktree", () => focusWorktreeCommand()),
+        cmd("vscode-git-worktree-switcher.unfocusWorktree", () => unfocusWorktreeCommand()),
+        cmd("vscode-git-worktree-switcher.removeWorktreeFolder", () => removeWorktreeFolderCommand()),
+        cmd("vscode-git-worktree-switcher.refreshWorktrees", () => refreshCommand()),
         vscode.commands.registerCommand("vscode-git-worktree-switcher.showLogs", () => {
             if (!outputChannel) {outputChannel = vscode.window.createOutputChannel("Worktrees");}
             outputChannel.show();
         }),
-        vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        vscode.workspace.onDidChangeWorkspaceFolders(async () => {
             log(`Workspace folders changed → invalidating cache`);
+            await verifyAndRecoverWorkspace();
             repoCache = null;
             void updateWindowTitle();
+        }),
+        vscode.window.onDidChangeWindowState((state) => {
+            if (state.focused) {
+                void verifyAndRecoverWorkspace();
+            }
         })
     );
 
     setTimeout(async () => {
         try {
             await getRepos();
+            await verifyAndRecoverWorkspace();
             await updateWindowTitle();
         } catch (e) {
             log(`Pre-warm failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -220,7 +237,76 @@ async function getRepos(forceRefresh = false): Promise<RepoSnapshot[]> {
     log(`Cache miss, running discovery`);
     const repos = await discoverReposFromWorkspace();
     repoCache = { repos, timestamp: Date.now() };
+    if (repos.length > 0) {lastKnownRepos = repos;}
     return repos;
+}
+
+async function pathExists(p: string): Promise<boolean> {
+    try {
+        await fs.stat(p);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function verifyAndRecoverWorkspace(): Promise<void> {
+    if (recovering) {return;}
+    const wsFolders = vscode.workspace.workspaceFolders ?? [];
+    if (wsFolders.length === 0) {return;}
+
+    const folders: RecoveryFolder[] = await Promise.all(
+        wsFolders.map(async (f) => {
+            const exists = await pathExists(f.uri.fsPath);
+            const commonDir = exists ? await getCommonDirSafe(f.uri.fsPath) : null;
+            return { path: f.uri.fsPath, name: f.name, exists, commonDir };
+        })
+    );
+
+    const missing = folders.filter((f) => !f.exists);
+    if (missing.length === 0) {return;}
+
+    recovering = true;
+    try {
+        log(`Recovery: missing workspace folders: ${missing.map((m) => m.path).join(", ")}`);
+
+        const survivingSnaps = await Promise.all(
+            folders.filter((f) => f.exists).map((f) => getRepoSnapshot(f.path))
+        );
+        const survivingRepos = survivingSnaps.filter((s): s is RepoSnapshot => !!s);
+
+        const cachedMainPaths = [
+            ...new Set(
+                lastKnownRepos
+                    .map((r) => r.worktrees.find((w) => !w.bare)?.path)
+                    .filter((p): p is string => !!p)
+            ),
+        ];
+        const aliveResults = await Promise.all(cachedMainPaths.map((p) => pathExists(p)));
+        const cachedExistence = new Map(cachedMainPaths.map((p, i) => [p, aliveResults[i]]));
+
+        const entries = planWorkspaceRecovery({
+            folders,
+            survivingRepos,
+            cachedRepos: lastKnownRepos,
+            isAlive: (p) => cachedExistence.get(p) ?? false,
+        });
+
+        if (entries.length === 0) {
+            log(`Recovery: no usable entries; leaving workspace unchanged`);
+            return;
+        }
+
+        const ok = focusOn(toFolderEntries(entries));
+        if (ok) {
+            log(`Recovery: restored ${entries.length} folder(s)`);
+            vscode.window.showWarningMessage("Worktree folder no longer exists; restored to repository root.");
+        } else {
+            log(`Recovery: focusOn returned false`);
+        }
+    } finally {
+        recovering = false;
+    }
 }
 
 async function refreshCommand(): Promise<void> {
