@@ -165,6 +165,44 @@ export function buildRepoFocusSwap(
     return dedupeByPath(out);
 }
 
+export type RecoveryFolder = {
+    path: string;
+    name: string;
+    exists: boolean;
+    commonDir: string | null;
+};
+
+export function planWorkspaceRecovery(input: {
+    folders: RecoveryFolder[];
+    survivingRepos: RepoSnapshot[];
+    cachedRepos: RepoSnapshot[];
+    isAlive: (p: string) => boolean;
+}): RootEntry[] {
+    if (input.folders.every((f) => f.exists)) {return [];}
+
+    const repos: RepoSnapshot[] = [];
+    const seen = new Set<string>();
+    for (const r of input.survivingRepos) {
+        if (seen.has(r.commonDir)) {continue;}
+        seen.add(r.commonDir);
+        repos.push(r);
+    }
+    for (const r of input.cachedRepos) {
+        if (seen.has(r.commonDir)) {continue;}
+        const main = r.worktrees.find((w) => !w.bare);
+        if (main && input.isAlive(main.path)) {
+            seen.add(r.commonDir);
+            repos.push(r);
+        }
+    }
+
+    const survivors: ExistingFolder[] = input.folders
+        .filter((f) => f.exists)
+        .map((f) => ({ path: f.path, name: f.name, commonDir: f.commonDir }));
+
+    return buildRootsOnlyEntries(repos, survivors);
+}
+
 function orderReposByFirstAppearance(
     repos: RepoSnapshot[],
     current: ExistingFolder[]
