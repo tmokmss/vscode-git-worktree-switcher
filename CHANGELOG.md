@@ -24,7 +24,3 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ### Features
 
 * override window.title with repo root name ([#1](https://github.com/tmokmss/vscode-git-worktree-switcher/issues/1)) ([9206a59](https://github.com/tmokmss/vscode-git-worktree-switcher/commit/9206a5967e93a99ced3d2328d75664645d3ea8ba))
-
-## [Unreleased]
-
-- Initial release

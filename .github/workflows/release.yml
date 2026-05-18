@@ -1,21 +1,17 @@
-# Release pipeline driven by release-please.
+# Release pipeline driven by semantic-release.
 #
 # Flow:
-#   1. Every push to main runs release-please. It scans Conventional Commits
-#      since the last release.
-#   2. If there are releasable commits (feat/fix/perf/revert/breaking),
-#      release-please maintains a "release PR" on a branch
-#      `release-please--branches--main` containing:
-#        - bumped package.json version
-#        - updated CHANGELOG.md with categorized entries
-#   3. Merging the release PR causes the next run to create:
-#        - a git tag (vX.Y.Z)
-#        - a GitHub Release with CHANGELOG-derived notes
-#   4. When a release is created in step 3, the `publish` job below fires
-#      and pushes the .vsix to the VS Code Marketplace via OIDC.
+#   1. Every push to main runs semantic-release. It scans commits since
+#      the last v* tag.
+#   2. Bump type is derived from those commit messages (see .releaserc.json):
+#        - BREAKING CHANGE → major
+#        - feat: → minor
+#        - any other type (fix/refactor/chore/docs/...) → patch
+#   3. semantic-release bumps package.json *in-CI only* (not committed back),
+#      builds the .vsix, publishes to the VS Code Marketplace via OIDC,
+#      then creates the git tag and GitHub Release with auto-generated notes.
 #
-# Tests are NOT run here — they run in ci.yml on every push and PR. Releases
-# are expected to be cut from green main.
+# Tests run in ci.yml on every push and PR; releases are cut from green main.
 
 name: Release
 
@@ -26,30 +22,18 @@ on:
 
 permissions:
   contents: write
+  issues: write
   pull-requests: write
   id-token: write
 
 jobs:
-  release-please:
-    runs-on: ubuntu-latest
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-    steps:
-      - uses: googleapis/release-please-action@v4
-        id: release
-        with:
-          release-type: node
-
-  publish:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+  release:
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -58,13 +42,13 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run package
-
       - uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           allow-no-subscriptions: true
 
-      - name: Publish to VS Code Marketplace
-        run: npx @vscode/vsce publish --azure-credential
+      - name: Run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
