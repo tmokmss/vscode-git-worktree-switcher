@@ -46,9 +46,16 @@
       "@semantic-release/exec",
       {
         "prepareCmd": "npm version ${nextRelease.version} --no-git-tag-version --allow-same-version && npm run package",
-        "publishCmd": "npx @vscode/vsce publish --azure-credential"
+        "publishCmd": "for i in 1 2 3; do npx @vscode/vsce publish --azure-credential && exit 0; [ $i -lt 3 ] && sleep $((i * 30)); done; exit 1"
       }
     ],
-    "@semantic-release/github"
+    [
+      "@semantic-release/github",
+      {
+        "successComment": false,
+        "failComment": false,
+        "releasedLabels": false
+      }
+    ]
   ]
 }
