@@ -2,7 +2,7 @@
   "name": "vscode-git-worktree-switcher",
   "displayName": "Git Worktree Switcher",
   "description": "Switch between git worktrees in a single VS Code window without reloading. Designed for use with Claude Code.",
-  "version": "0.2.0",
+  "version": "0.0.0",
   "publisher": "tmokmss",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -81,14 +81,17 @@
     "test:integration": "vscode-test"
   },
   "devDependencies": {
+    "@semantic-release/exec": "^7.1.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
     "@types/vscode": "^1.118.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
+    "conventional-changelog-conventionalcommits": "^9.3.1",
     "esbuild": "^0.27.3",
     "eslint": "^9.39.3",
     "npm-run-all": "^4.1.5",
+    "semantic-release": "^25.0.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1",
     "vitest": "^4.1.5"

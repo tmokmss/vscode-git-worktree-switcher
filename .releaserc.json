@@ -1,0 +1,54 @@
+{
+  "branches": ["main"],
+  "plugins": [
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        "preset": "conventionalcommits",
+        "releaseRules": [
+          { "breaking": true, "release": "major" },
+          { "type": "feat", "release": "minor" },
+          { "type": "fix", "release": "patch" },
+          { "type": "perf", "release": "patch" },
+          { "type": "revert", "release": "patch" },
+          { "type": "refactor", "release": "patch" },
+          { "type": "chore", "release": "patch" },
+          { "type": "docs", "release": "patch" },
+          { "type": "style", "release": "patch" },
+          { "type": "test", "release": "patch" },
+          { "type": "build", "release": "patch" },
+          { "type": "ci", "release": "patch" }
+        ]
+      }
+    ],
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        "preset": "conventionalcommits",
+        "presetConfig": {
+          "types": [
+            { "type": "feat", "section": "Features" },
+            { "type": "fix", "section": "Bug Fixes" },
+            { "type": "perf", "section": "Performance Improvements" },
+            { "type": "revert", "section": "Reverts" },
+            { "type": "refactor", "section": "Miscellaneous" },
+            { "type": "docs", "section": "Miscellaneous" },
+            { "type": "chore", "section": "Miscellaneous" },
+            { "type": "test", "section": "Miscellaneous" },
+            { "type": "style", "section": "Miscellaneous" },
+            { "type": "build", "section": "Miscellaneous" },
+            { "type": "ci", "section": "Miscellaneous" }
+          ]
+        }
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "npm version ${nextRelease.version} --no-git-tag-version --allow-same-version && npm run package",
+        "publishCmd": "npx @vscode/vsce publish --azure-credential"
+      }
+    ],
+    "@semantic-release/github"
+  ]
+}
