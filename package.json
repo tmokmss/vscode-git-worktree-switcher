@@ -37,20 +37,12 @@
   "contributes": {
     "commands": [
       {
-        "command": "vscode-git-worktree-switcher.addWorktree",
-        "title": "Worktrees: Add Worktree to Workspace"
-      },
-      {
         "command": "vscode-git-worktree-switcher.focusWorktree",
         "title": "Worktrees: Focus Worktree"
       },
       {
         "command": "vscode-git-worktree-switcher.unfocusWorktree",
         "title": "Worktrees: Clear Worktree Focus"
-      },
-      {
-        "command": "vscode-git-worktree-switcher.removeWorktreeFolder",
-        "title": "Worktrees: Remove Worktree from Workspace"
       },
       {
         "command": "vscode-git-worktree-switcher.refreshWorktrees",
@@ -68,11 +60,6 @@
           "type": "boolean",
           "default": false,
           "description": "On startup, automatically add all sibling worktrees of the current workspace folder."
-        },
-        "vscode-git-worktree-switcher.overrideWindowTitle": {
-          "type": "boolean",
-          "default": true,
-          "description": "Override window.title at the workspace level so the title bar / Command Center shows the repository root directory name instead of 'Untitled (Workspace)'."
         }
       }
     }
