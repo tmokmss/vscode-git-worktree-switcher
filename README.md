@@ -11,9 +11,7 @@ Switching VS Code workspace folders typically reloads the window, which restarts
 All commands are available from the Command Palette (`Cmd+Shift+P`) prefixed with `Worktrees:`.
 
 - **Focus Worktree** — Pick a worktree from any discovered repo. The workspace is replaced with just that one folder. Search, Quick Open, and Explorer are naturally scoped to that worktree.
-- **Add Worktree to Workspace** — Add a single worktree as an additional workspace folder without removing existing ones.
 - **Clear Worktree Focus** (a.k.a. unfocus / show all) — Replace the workspace with all worktrees of all discovered repos.
-- **Remove Worktree from Workspace** — Remove a folder from the workspace (does not delete files).
 - **Refresh / Auto-Add All Worktrees** — Force a re-scan for new worktrees (e.g. after Claude Code creates one) and replace the workspace.
 - **Show Logs** — Open the Output channel for debugging.
 
@@ -28,15 +26,6 @@ If your workspace folder contains multiple git repositories (e.g. `~/projects/mo
 - `vscode.workspace.updateWorkspaceFolders` swaps the workspace folder set in place — no window reload, no extension restart
 - After a focus/show-all operation, the explorer is collapsed for a clean tree
 - Repo discovery results are cached for 60 seconds and invalidated when the workspace folder set changes; pre-warmed on activation
-
-## Settings
-
-- `vscode-git-worktree-switcher.autoAddOnStartup` (default: `false`) — On startup, automatically run "Show All" to add every discovered worktree to the workspace.
-
-## Limitations
-
-- VS Code's built-in Git extension treats files inside a parent repo's gitignored path as gitignored, even if the inner directory is its own git repo. This is unavoidable from inside the extension — the only fix is to place worktrees outside any parent repo's gitignored paths.
-- Switching focus while another extension has files open from the unfocused worktree will close those editors when the folder is removed from the workspace.
 
 ## Development
 

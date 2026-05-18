@@ -40,10 +40,8 @@ export function activate(context: vscode.ExtensionContext) {
         });
 
     context.subscriptions.push(
-        cmd("vscode-git-worktree-switcher.addWorktree", () => addWorktreeCommand()),
         cmd("vscode-git-worktree-switcher.focusWorktree", () => focusWorktreeCommand()),
         cmd("vscode-git-worktree-switcher.unfocusWorktree", () => unfocusWorktreeCommand()),
-        cmd("vscode-git-worktree-switcher.removeWorktreeFolder", () => removeWorktreeFolderCommand()),
         cmd("vscode-git-worktree-switcher.refreshWorktrees", () => refreshCommand()),
         vscode.commands.registerCommand("vscode-git-worktree-switcher.showLogs", () => {
             if (!outputChannel) {outputChannel = vscode.window.createOutputChannel("Worktrees");}
@@ -88,10 +86,6 @@ export function deactivate() {
 }
 
 async function updateWindowTitle(): Promise<void> {
-    if (!vscode.workspace.getConfiguration().get<boolean>("vscode-git-worktree-switcher.overrideWindowTitle", true)) {
-        return;
-    }
-
     let rootName: string | null = null;
     try {
         const repos = await getRepos();
@@ -119,18 +113,6 @@ async function updateWindowTitle(): Promise<void> {
     } catch (e) {
         log(`Failed to set window.title: ${e instanceof Error ? e.message : String(e)}`);
     }
-}
-
-async function pickAnchorFolder(): Promise<vscode.WorkspaceFolder | undefined> {
-    const folders = vscode.workspace.workspaceFolders ?? [];
-    if (folders.length === 0) {
-        vscode.window.showErrorMessage("Open a folder first.");
-        return undefined;
-    }
-    if (folders.length === 1) {return folders[0];}
-    return vscode.window.showWorkspaceFolderPick({
-        placeHolder: "Select a folder whose repository to query for worktrees",
-    });
 }
 
 async function getCommonDirSafe(cwd: string): Promise<string | null> {
@@ -399,38 +381,6 @@ async function collapseExplorer(): Promise<void> {
     }
 }
 
-async function addWorktreeCommand(): Promise<void> {
-    const anchor = await pickAnchorFolder();
-    if (!anchor) {return;}
-
-    const snap = await getRepoSnapshot(anchor.uri.fsPath);
-    if (!snap) {return;}
-
-    const existing = new Set((vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath));
-    const candidates = snap.worktrees.filter((w) => !w.bare && !existing.has(w.path));
-    if (candidates.length === 0) {
-        vscode.window.showInformationMessage("All worktrees are already in this workspace.");
-        return;
-    }
-
-    const picked = await vscode.window.showQuickPick(
-        candidates.map((w) => ({
-            label: worktreeLabel(w),
-            description: w.path,
-            worktree: w,
-        })),
-        { placeHolder: "Select a worktree to add to this workspace", matchOnDescription: true }
-    );
-    if (!picked) {return;}
-
-    const w = picked.worktree;
-    const end = vscode.workspace.workspaceFolders?.length ?? 0;
-    vscode.workspace.updateWorkspaceFolders(end, 0, {
-        uri: vscode.Uri.file(w.path),
-        name: worktreeLabel(w),
-    });
-}
-
 async function focusWorktreeCommand(): Promise<void> {
     const repos = await getRepos();
     if (repos.length === 0) {
@@ -487,15 +437,3 @@ async function unfocusWorktreeCommand(silent = false): Promise<void> {
     }
 }
 
-async function removeWorktreeFolderCommand(): Promise<void> {
-    const folders = vscode.workspace.workspaceFolders ?? [];
-    if (folders.length === 0) {return;}
-
-    const picked = await vscode.window.showQuickPick(
-        folders.map((f) => ({ label: f.name, description: f.uri.fsPath, folder: f })),
-        { placeHolder: "Select a worktree folder to remove from this workspace (does not delete files)", matchOnDescription: true }
-    );
-    if (!picked) {return;}
-
-    vscode.workspace.updateWorkspaceFolders(picked.folder.index, 1);
-}
