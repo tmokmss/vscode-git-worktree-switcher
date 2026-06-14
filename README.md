@@ -2,6 +2,8 @@
 
 A VS Code extension for switching between git worktrees in a single window. Designed for use with Claude Code, where worktrees are created frequently as part of agentic workflows and you want to inspect them without losing your current Claude session state.
 
+![Focusing and switching between git worktrees without a window reload](images/demo.gif)
+
 ## Why
 
 Switching VS Code workspace folders typically reloads the window, which restarts all extensions — losing your Claude Code chat panel state, terminal sessions, and editor layout. This extension lets you switch between worktrees by manipulating the workspace folder list directly, so the window never reloads.
