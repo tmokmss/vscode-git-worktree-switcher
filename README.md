@@ -15,6 +15,7 @@ All commands are available from the Command Palette (`Cmd+Shift+P`) prefixed wit
 - **Focus Worktree** — Pick a worktree from any discovered repo. The workspace is replaced with just that one folder. Search, Quick Open, and Explorer are naturally scoped to that worktree.
 - **Clear Worktree Focus** (a.k.a. unfocus / show all) — Replace the workspace with all worktrees of all discovered repos.
 - **Refresh / Auto-Add All Worktrees** — Force a re-scan for new worktrees (e.g. after Claude Code creates one) and replace the workspace.
+- **Open Terminal in Worktree** — Pick a worktree and open a new integrated terminal with that worktree as the working directory, without changing the workspace focus.
 - **Show Logs** — Open the Output channel for debugging.
 
 ## Multi-repo support
