@@ -43,6 +43,7 @@ export function activate(context: vscode.ExtensionContext) {
         cmd("vscode-git-worktree-switcher.focusWorktree", () => focusWorktreeCommand()),
         cmd("vscode-git-worktree-switcher.unfocusWorktree", () => unfocusWorktreeCommand()),
         cmd("vscode-git-worktree-switcher.refreshWorktrees", () => refreshCommand()),
+        cmd("vscode-git-worktree-switcher.openTerminalInWorktree", () => openTerminalInWorktreeCommand()),
         vscode.commands.registerCommand("vscode-git-worktree-switcher.showLogs", () => {
             if (!outputChannel) {outputChannel = vscode.window.createOutputChannel("Worktrees");}
             outputChannel.show();
@@ -409,6 +410,33 @@ async function focusWorktreeCommand(): Promise<void> {
         await collapseExplorer();
         vscode.window.showInformationMessage(`Focused: ${worktreeLabel(picked.worktree)}`);
     }
+}
+
+async function openTerminalInWorktreeCommand(): Promise<void> {
+    const repos = await getRepos();
+    if (repos.length === 0) {
+        vscode.window.showErrorMessage("No git repositories found in this workspace.");
+        return;
+    }
+
+    const items = buildWorktreePickItems(repos);
+    if (items.length === 0) {
+        vscode.window.showErrorMessage("No worktrees found.");
+        return;
+    }
+
+    const picked = await vscode.window.showQuickPick(items, {
+        placeHolder: "Open a new terminal in a worktree (workspace focus is unchanged)",
+        matchOnDescription: true,
+    });
+    if (!picked) {return;}
+
+    const terminal = vscode.window.createTerminal({
+        name: picked.label,
+        cwd: picked.worktree.path,
+    });
+    terminal.show();
+    log(`Opened terminal in ${picked.worktree.path}`);
 }
 
 async function unfocusWorktreeCommand(silent = false): Promise<void> {

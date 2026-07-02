@@ -49,6 +49,10 @@
         "title": "Worktrees: Refresh / Auto-Add All Worktrees"
       },
       {
+        "command": "vscode-git-worktree-switcher.openTerminalInWorktree",
+        "title": "Worktrees: Open Terminal in Worktree"
+      },
+      {
         "command": "vscode-git-worktree-switcher.showLogs",
         "title": "Worktrees: Show Logs"
       }
