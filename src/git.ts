@@ -9,6 +9,8 @@ export type Worktree = {
     branch: string | null;
     bare: boolean;
     detached: boolean;
+    /** Committer date of the HEAD commit, in unix seconds. Undefined when unknown. */
+    committedAt?: number;
 };
 
 export async function getGitTopLevel(cwd: string): Promise<string> {
@@ -41,6 +43,28 @@ export async function getSuperprojectPath(cwd: string): Promise<string> {
 export async function listWorktrees(cwd: string): Promise<Worktree[]> {
     const { stdout } = await execFileP("git", ["worktree", "list", "--porcelain"], { cwd });
     return parsePorcelain(stdout);
+}
+
+const NULL_SHA = /^0+$/;
+
+/** Committer dates (unix seconds) for the given commits, keyed by full sha. */
+export async function getCommitTimestamps(cwd: string, heads: string[]): Promise<Map<string, number>> {
+    const shas = [...new Set(heads.filter((h) => h && !NULL_SHA.test(h)))];
+    if (shas.length === 0) {return new Map();}
+    const { stdout } = await execFileP("git", ["show", "-s", "--format=%H %ct", ...shas], { cwd });
+    return parseCommitTimestamps(stdout);
+}
+
+export function parseCommitTimestamps(stdout: string): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const line of stdout.split("\n")) {
+        const [sha, ts] = line.trim().split(/\s+/);
+        if (!sha || ts === undefined) {continue;}
+        const seconds = Number(ts);
+        if (!Number.isFinite(seconds)) {continue;}
+        out.set(sha, seconds);
+    }
+    return out;
 }
 
 export function parsePorcelain(stdout: string): Worktree[] {

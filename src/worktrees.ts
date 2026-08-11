@@ -60,6 +60,42 @@ export function buildShowAllEntries(worktrees: Worktree[], repoName?: string): R
     return root ? dedupeByPath([root, ...all]) : all;
 }
 
+export type WorktreePick = {
+    label: string;
+    description: string;
+    repo: RepoSnapshot;
+    worktree: Worktree;
+};
+
+/** Most recently committed worktree first; unknown commit dates go last. */
+export function buildWorktreePickItems(repos: RepoSnapshot[]): WorktreePick[] {
+    const showRepoPrefix = repos.length > 1;
+    const items: WorktreePick[] = [];
+    for (const repo of repos) {
+        for (const w of repo.worktrees) {
+            if (w.bare) {continue;}
+            items.push({
+                label: withPrefix(showRepoPrefix ? repo.name : undefined, worktreeLabel(w)),
+                description: w.path,
+                repo,
+                worktree: w,
+            });
+        }
+    }
+    return sortByCommitDateDesc(items);
+}
+
+export function sortByCommitDateDesc<T extends { worktree: Worktree }>(items: T[]): T[] {
+    return [...items].sort((a, b) => compareCommitDateDesc(a.worktree, b.worktree));
+}
+
+function compareCommitDateDesc(a: Worktree, b: Worktree): number {
+    if (a.committedAt === b.committedAt) {return 0;}
+    if (a.committedAt === undefined) {return 1;}
+    if (b.committedAt === undefined) {return -1;}
+    return b.committedAt - a.committedAt;
+}
+
 const SKIP_DIRS = new Set([
     "node_modules",
     "dist",

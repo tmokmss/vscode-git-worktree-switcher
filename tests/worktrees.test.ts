@@ -6,6 +6,7 @@ import {
     buildRepoFocusSwap,
     buildRootsOnlyEntries,
     buildShowAllEntries,
+    buildWorktreePickItems,
     dedupeByPath,
     determineRoot,
     planWorkspaceRecovery,
@@ -145,6 +146,63 @@ describe("buildShowAllEntries", () => {
     it("returns empty when only bare repos exist", () => {
         const list: Worktree[] = [wt({ path: "/repo/.bare", branch: null, bare: true })];
         expect(buildShowAllEntries(list)).toEqual([]);
+    });
+});
+
+describe("buildWorktreePickItems", () => {
+    const repo = (name: string, worktrees: Worktree[]): RepoSnapshot => ({
+        commonDir: `/${name}/.git`,
+        name,
+        worktrees,
+    });
+
+    it("sorts by HEAD commit date, newest first", () => {
+        const snap = repo("repo", [
+            wt({ path: "/repo/main", branch: "main", committedAt: 200 }),
+            wt({ path: "/repo/old", branch: "old", committedAt: 100 }),
+            wt({ path: "/repo/new", branch: "new", committedAt: 300 }),
+        ]);
+
+        expect(buildWorktreePickItems([snap]).map((i) => i.label)).toEqual(["new", "main", "old"]);
+    });
+
+    it("puts worktrees with unknown commit dates last, keeping their relative order", () => {
+        const snap = repo("repo", [
+            wt({ path: "/repo/a", branch: "a" }),
+            wt({ path: "/repo/b", branch: "b", committedAt: 100 }),
+            wt({ path: "/repo/c", branch: "c" }),
+        ]);
+
+        expect(buildWorktreePickItems([snap]).map((i) => i.label)).toEqual(["b", "a", "c"]);
+    });
+
+    it("sorts across repos and prefixes labels when multiple repos exist", () => {
+        const items = buildWorktreePickItems([
+            repo("alpha", [wt({ path: "/alpha/main", branch: "main", committedAt: 100 })]),
+            repo("beta", [wt({ path: "/beta/main", branch: "main", committedAt: 300 })]),
+        ]);
+
+        expect(items.map((i) => i.label)).toEqual(["beta / main", "alpha / main"]);
+        expect(items[0].description).toBe("/beta/main");
+    });
+
+    it("skips bare worktrees", () => {
+        const snap = repo("repo", [
+            wt({ path: "/repo/.bare", branch: null, bare: true, committedAt: 999 }),
+            wt({ path: "/repo/main", branch: "main", committedAt: 100 }),
+        ]);
+
+        expect(buildWorktreePickItems([snap]).map((i) => i.label)).toEqual(["main"]);
+    });
+
+    it("does not reorder the source worktree list", () => {
+        const worktrees = [
+            wt({ path: "/repo/main", branch: "main", committedAt: 100 }),
+            wt({ path: "/repo/new", branch: "new", committedAt: 300 }),
+        ];
+        buildWorktreePickItems([repo("repo", worktrees)]);
+
+        expect(worktrees.map((w) => w.path)).toEqual(["/repo/main", "/repo/new"]);
     });
 });
 

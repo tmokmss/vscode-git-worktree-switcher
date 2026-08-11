@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parsePorcelain } from "../src/git";
+import { parseCommitTimestamps, parsePorcelain } from "../src/git";
 
 describe("parsePorcelain", () => {
     it("parses a regular repo with main + linked worktrees", () => {
@@ -61,5 +61,28 @@ describe("parsePorcelain", () => {
         const stdout =
             "worktree /repo/main\nHEAD abc\nbranch refs/heads/main\n\n\n\nworktree /repo/x\nHEAD def\nbranch refs/heads/x\n\n";
         expect(parsePorcelain(stdout)).toHaveLength(2);
+    });
+});
+
+describe("parseCommitTimestamps", () => {
+    it("maps each sha to its committer date in unix seconds", () => {
+        const stdout = ["abc123 1785817372", "def456 1785638913", ""].join("\n");
+
+        expect(parseCommitTimestamps(stdout)).toEqual(
+            new Map([
+                ["abc123", 1785817372],
+                ["def456", 1785638913],
+            ])
+        );
+    });
+
+    it("ignores malformed lines", () => {
+        const stdout = ["abc123 1785817372", "no-timestamp", "def456 not-a-number", ""].join("\n");
+
+        expect(parseCommitTimestamps(stdout)).toEqual(new Map([["abc123", 1785817372]]));
+    });
+
+    it("returns an empty map for empty input", () => {
+        expect(parseCommitTimestamps("")).toEqual(new Map());
     });
 });

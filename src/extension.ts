@@ -1,11 +1,18 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { getGitCommonDir, getSuperprojectPath, listWorktrees, type Worktree } from "./git";
+import {
+    getCommitTimestamps,
+    getGitCommonDir,
+    getSuperprojectPath,
+    listWorktrees,
+    type Worktree,
+} from "./git";
 import { focusOn } from "./focus";
 import {
     buildRepoFocusSwap,
     buildRootsOnlyEntries,
+    buildWorktreePickItems,
     planWorkspaceRecovery,
     repoDisplayName,
     shouldDescendInto,
@@ -145,7 +152,7 @@ async function getRepoSnapshot(cwd: string): Promise<RepoSnapshot | undefined> {
             log(`Skipping submodule at ${cwd} (superproject=${superproject})`);
             return undefined;
         }
-        const realWorktrees = await filterRealWorktrees(worktrees);
+        const realWorktrees = await attachCommitDates(cwd, await filterRealWorktrees(worktrees));
         return {
             commonDir,
             name: repoDisplayName(commonDir, realWorktrees),
@@ -172,6 +179,20 @@ async function filterRealWorktrees(worktrees: Worktree[]): Promise<Worktree[]> {
         })
     );
     return checks.filter((c) => c.keep).map((c) => c.w);
+}
+
+async function attachCommitDates(cwd: string, worktrees: Worktree[]): Promise<Worktree[]> {
+    try {
+        const timestamps = await getCommitTimestamps(cwd, worktrees.map((w) => w.head));
+        if (timestamps.size === 0) {return worktrees;}
+        return worktrees.map((w) => {
+            const committedAt = timestamps.get(w.head);
+            return committedAt === undefined ? w : { ...w, committedAt };
+        });
+    } catch (e: unknown) {
+        log(`Commit dates unavailable at ${cwd}: ${e instanceof Error ? e.message : String(e)}`);
+        return worktrees;
+    }
 }
 
 async function isGitWorkingDir(p: string): Promise<boolean> {
@@ -332,31 +353,6 @@ async function discoverReposFromWorkspace(): Promise<RepoSnapshot[]> {
 
 function toFolderEntries(entries: RootEntry[]): { uri: vscode.Uri; name: string }[] {
     return entries.map((e) => ({ uri: vscode.Uri.file(e.path), name: e.label }));
-}
-
-type WorktreePick = {
-    label: string;
-    description: string;
-    repo: RepoSnapshot;
-    worktree: Worktree;
-};
-
-function buildWorktreePickItems(repos: RepoSnapshot[]): WorktreePick[] {
-    const showRepoPrefix = repos.length > 1;
-    const items: WorktreePick[] = [];
-    for (const repo of repos) {
-        for (const w of repo.worktrees) {
-            if (w.bare) {continue;}
-            const branchLabel = worktreeLabel(w);
-            items.push({
-                label: showRepoPrefix ? `${repo.name} / ${branchLabel}` : branchLabel,
-                description: w.path,
-                repo,
-                worktree: w,
-            });
-        }
-    }
-    return items;
 }
 
 function waitForWorkspaceFoldersChange(timeoutMs = 1000): Promise<void> {
